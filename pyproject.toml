@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "extreme-weather-db"
+version = "0.1.0"
+description = ""
+authors = ["Tilmann Diepenbruck <tdiepenb@smail.uni-koeln.de>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+jupyter = "^1.1.1"
+cdsapi = "^0.7.4"
+xarray = "^2024.10.0"
+numpy = "^2.1.3"
+netcdf4 = "^1.7.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
