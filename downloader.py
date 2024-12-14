@@ -1,5 +1,7 @@
 import calendar
 import os.path
+import zipfile
+
 import cdsapi
 import sqlite3
 import random
@@ -9,12 +11,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 scratch_folder = "/scratch/ag-schultz/esdp2/"
 project_folder = "/projects/ag-schultz/"
-WIND_FILESIZE_MIN = 0
-WIND_FILESIZE_MAX = 0
-TEMPERATURE_FILESIZE_MIN = 0
-TEMPERATURE_FILESIZE_MAX = 0
-PRECIPITATION_FILESIZE_MIN = 0
-PRECIPITATION_FILESIZE_MAX = 0
+WIND_FILESIZE_MIN = 220000000
+WIND_FILESIZE_MAX = 320000000
+TEMPERATURE_FILESIZE_MIN = 60000000
+TEMPERATURE_FILESIZE_MAX = 80000000
+PRECIPITATION_FILESIZE_MIN = 700000000
+PRECIPITATION_FILESIZE_MAX = 900000000
 
 
 
@@ -33,7 +35,7 @@ def getDate(year, month):
         month = f"0{month}"
     return f"{year}-{month}-01/to/{year}-{month}-{day}"
 
-def initializeDatabase(connection, yearrange = [1960,2023], variables = ["temperature", "precipitation", "wind"]):
+def initializeDatabase(connection, yearrange = [2020,2023], variables = ["temperature", "precipitation", "wind"]):
     cursor = connection.cursor()
 
     # create table
@@ -189,12 +191,16 @@ def sanityCheckTemperature(file_path):
         return "failed"
 
     # Check if min and max values are within acceptable parameters
-    TEMP_MIN = 0
-    TEMP_MAX = 0
-    if (getMinNC(file_path) >= TEMP_MIN and getMaxNC(file_path <= TEMP_MAX)):
-        return "downloaded"
+    TEMP_MIN = 180 # -90°C
+    TEMP_MAX = 340 #  67°C
+    dataset = xarray.open_dataset(file_path)
+
+    if (getMinNC(dataset) >= TEMP_MIN and getMaxNC(dataset <= TEMP_MAX)):
+        status = "downloaded"
     else:
-        return "failed"
+        status =  "failed"
+    dataset.close()
+    return status
 
 
 def sanityCheckWind(file_path):
@@ -207,6 +213,24 @@ def sanityCheckWind(file_path):
 
     # Check if min and max values are within acceptable parameters
     # First we need to unzip the zip archive
+    with zipfile.ZipFile(file_path) as zipref:
+        zipref.extractall(f"{scratch_folder}/temp/")
+    datasets = [(xarray.open_dataset(f"./temp/{x}")) for x in os.listdir("./temp")]
+    merged_dataset = xarray.merge(datasets)
+    WIND_MIN = -150
+    WIND_MAX = 150
+    [x.close for x in datasets]
+    if (getMinNC(merged_dataset) >= WIND_MIN and getMaxNC(merged_dataset <= WIND_MAX)):
+        status = "downloaded"
+    else:
+        status = "failed"
+
+    merged_dataset.to_netcdf(file_path.replace(".zip",".nc"))
+    merged_dataset.close()
+
+    #delete temp folder # TODO
+
+    return status
 
 
 def sanityCheckPrecipitation(file_path):
@@ -217,17 +241,15 @@ def sanityCheckPrecipitation(file_path):
     else:
         return "failed"
 
-    # Check if min and max values are within acceptable parameters
+    # Check if min and max values are within acceptable parameters TODO
 
 
-def getMinNC(file, variable):
-    ncFile = xarray.open_dataset(file)
-    min = ncFile[variable].min().to_numpy()
+def getMinNC(dataset, variable):
+    min = dataset[variable].min().to_numpy()
     return min
 
-def getMaxNC(file, variable):
-    ncFile = xarray.open_dataset(file)
-    max = ncFile[variable].max().to_numpy()
+def getMaxNC(dataset, variable):
+    max = dataset[variable].max().to_numpy()
     return max
 
 def download_manager(args, database = "download_database.db"):
