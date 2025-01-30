@@ -418,7 +418,7 @@ def getMaxNC(dataset, variable):
     max = dataset[variable].max().to_numpy()
     return max
 
-def download_manager(args, database = "download_database.db"):
+def download_manager(args, database = "/projects/ag-schultz/download_database.db"):
     vals = args.split(":")
     # unpack arguments
     year = int(vals[0])
