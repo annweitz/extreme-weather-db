@@ -12,6 +12,7 @@ import random
 import xarray
 from concurrent.futures import ThreadPoolExecutor
 
+
 # TODO: implement logging
 # TODO. implement error handling
 # TODO: implement factory pattern for 
@@ -159,11 +160,10 @@ def download(year,month,var):
 
         # client for downloading
         client = cdsapi.Client()
-
         # start download
         print(f"Starting download for {year}-{month}-{var}")
         client.retrieve(dataset, request, file)
-    except:
+    except Exception as e:
         print(traceback.format_exc())
     # sanity check
     file_status = sanityCheck(file, var)
@@ -261,7 +261,7 @@ class WindGustRequestBuilder(RequestBuilderBase):
             "download_format": "unarchived",
             "variable": ["instantaneous_10m_wind_gust"]
         }
-        file = f"{scratch_folder}wind_{year}_{month}.nc"
+        file = f"{scratch_folder}windgust_{year}_{month}.nc"
         return (dataset,request,file)
 
 class RequestBuilderFactory:
