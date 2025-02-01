@@ -241,6 +241,7 @@ class PrecipitationRequestBuilder(RequestBuilderBase):
 class WindGustRequestBuilder(RequestBuilderBase):
     def build_request(self, year, month):
         date = getDate(year, month)
+        date = date.replace("to/", "")
         dataset = "reanalysis-era5-single-levels"
         request = {
             "product_type": ["reanalysis"],
