@@ -488,7 +488,7 @@ def main():
     arguments = pack_records(records)
 
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         executor.map(download_manager, arguments)
     #for result in results:
     #    print(result)
