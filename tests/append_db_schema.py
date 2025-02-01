@@ -1,7 +1,7 @@
 import sqlite3
 
 # Connect to the database
-conn = sqlite3.connect("download_database.db")
+conn = sqlite3.connect("/projects/ag-schultz/download_database.db")
 cursor = conn.cursor()
 
 # Define the range of years and the variable name
