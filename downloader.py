@@ -11,9 +11,8 @@ import sqlite3
 import random
 import xarray
 from concurrent.futures import ThreadPoolExecutor
+import logging
 
-
-# TODO: implement logging
 # TODO. implement error handling
 # TODO: implement factory pattern for 
     # requestBuilder
@@ -70,10 +69,27 @@ The libraries used in this script are:
 
 """
 
+# configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # file paths to temp and project folders
 scratch_folder = "/scratch/ag-schultz/esdp2/"
 project_folder = "/projects/ag-schultz/"
+
+# check if directories exist, if not create them
+if not os.path.exists(scratch_folder):
+    os.makedirs(scratch_folder)
+    logger.info(f"Created directory: {scratch_folder}")
+else:
+    logger.info(f"Directory already exists: {scratch_folder}")
+
+if not os.path.exists(project_folder):
+    os.makedirs(project_folder)
+    logger.info(f"Created directory: {project_folder}")
+else:
+    logger.info(f"Directory already exists: {project_folder}")
+
 # file size limits
 WIND_FILESIZE_MIN = 220000000
 WIND_FILESIZE_MAX = 320000000
@@ -153,7 +169,16 @@ def getStatus(year,month,var,cursor):
     status = result.fetchone()[0]
     return status
 
+def getMinNC(dataset, variable):
+    min = dataset[variable].min().to_numpy()
+    return min
+
+def getMaxNC(dataset, variable):
+    max = dataset[variable].max().to_numpy()
+    return max
+
 def download(year,month,var):
+    
     # build cdsapi request and unpack arguments
     try:
         dataset, request, file = requestBuilder(year, month, var)
@@ -305,6 +330,7 @@ class TemperatureSanityCheck(SanityCheckBase):
         if (size >= TEMPERATURE_FILESIZE_MIN and size <= TEMPERATURE_FILESIZE_MAX):
             pass
         else:
+            logger.info(f"Temperature file size out of range: {size}")
             return "failed"
 
         TEMP_MIN = 180 # -90°C
@@ -313,6 +339,7 @@ class TemperatureSanityCheck(SanityCheckBase):
         if (getMinNC(dataset,"t") >= TEMP_MIN and getMaxNC(dataset,"t") <= TEMP_MAX):
             status = "downloaded"
         else:
+            logger.info(f"Temperature range out of bounds: {getMinNC(dataset,'t')} - {getMaxNC(dataset,'t')}")
             status = "failed"
         dataset.close()
         return status
@@ -323,6 +350,7 @@ class WindSanityCheck(SanityCheckBase):
         if (size >= WIND_FILESIZE_MIN and size <= WIND_FILESIZE_MAX):
             pass
         else:
+            logger.info(f"Wind file size out of range: {size}")
             return "failed"
         tempname = f"temp_{file_path.replace(scratch_folder,'').replace('.zip','')}"
         with zipfile.ZipFile(file_path) as zipref:
@@ -336,16 +364,19 @@ class WindSanityCheck(SanityCheckBase):
         if (getMinNC(merged_dataset,"i10fg") >= WIND_MIN and getMaxNC(merged_dataset,"i10fg") <= WIND_MAX):
             pass
         else:
+            logger.info(f"Wind gust range out of bounds: {getMinNC(merged_dataset,'i10fg')} - {getMaxNC(merged_dataset,'i10fg')}")
             status = "failed"
 
         if (getMinNC(merged_dataset,"v10") >= WIND_MIN and getMaxNC(merged_dataset,"v10") <= WIND_MAX):
             pass
         else:
+            logger.info(f"v10 range out of bounds: {getMinNC(merged_dataset,'v10')} - {getMaxNC(merged_dataset,'v10')}")
             status = "failed"
 
         if (getMinNC(merged_dataset,"u10") >= WIND_MIN and getMaxNC(merged_dataset,"u10") <= WIND_MAX):
             status = "downloaded"
         else:
+            logger.info(f"u10 range out of bounds: {getMinNC(merged_dataset,'u10')} - {getMaxNC(merged_dataset,'u10')}")
             status = "failed"
         merged_dataset.to_netcdf(file_path.replace(".zip",".nc"))
         merged_dataset.close()
@@ -363,6 +394,7 @@ class PrecipitationSanityCheck(SanityCheckBase):
         if (size >= PRECIPITATION_FILESIZE_MIN and size <= PRECIPITATION_FILESIZE_MAX):
             pass
         else:
+            logger.info(f"Precipitation file size out of range: {size}")
             return "failed"
 
         PRECIP_MIN = 0      #
@@ -371,6 +403,7 @@ class PrecipitationSanityCheck(SanityCheckBase):
         if (getMinNC(dataset,"tp") >= PRECIP_MIN and getMaxNC(dataset,"tp") <= PRECIP_MAX):
             status = "downloaded"
         else:
+            logger.info(f"Precipitation range out of bounds: {getMinNC(dataset,'tp')} - {getMaxNC(dataset,'tp')}")
             status =  "failed"
         dataset.close()
         return status
@@ -381,6 +414,7 @@ class WindGustSanityCheck(SanityCheckBase):
         if (size >= WINDGUST_FILESIZE_MIN and size <= WINDGUST_FILESIZE_MAX):
             pass
         else:
+            logger.info(f"Wind gust file size out of range: {size}")
             return "failed"
         WIND_MIN = 0
         WIND_MAX = 150
@@ -388,6 +422,7 @@ class WindGustSanityCheck(SanityCheckBase):
         if (getMinNC(dataset,"i10fg") >= WIND_MIN and getMaxNC(dataset,"i10fg") <= WIND_MAX):
             status = "downloaded"
         else:
+            logger.info(f"Wind gust range out of bounds: {getMinNC(dataset,'i10fg')} - {getMaxNC(dataset,'i10fg')}")
             status = "failed"
         dataset.close()
         return status    
@@ -410,14 +445,6 @@ def sanityCheck(file_path, var):
     sanity_check_factory = SanityCheckFactory()
     sanity_check = sanity_check_factory.get_sanity_check(var)
     return sanity_check.check(file_path)
-
-def getMinNC(dataset, variable):
-    min = dataset[variable].min().to_numpy()
-    return min
-
-def getMaxNC(dataset, variable):
-    max = dataset[variable].max().to_numpy()
-    return max
 
 def download_manager(args, database = "/projects/ag-schultz/download_database.db"):
     vals = args.split(":")
@@ -474,7 +501,7 @@ def pack_records(records):
 def main():
 
     # establish sql connection to database
-    connection = sqlite3.connect("download_database.db")
+    connection = sqlite3.connect(f"{project_folder}download_database.db")
     cursor = connection.cursor()
 
     # check if downloads table exists, if it doesn't, create it
@@ -487,7 +514,6 @@ def main():
     records = res.fetchall()
 
     arguments = pack_records(records)
-
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         executor.map(download_manager, arguments)
