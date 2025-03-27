@@ -1,15 +1,22 @@
 import sqlite3
-import pandas as pd
 import numpy as np
 import xarray as xr
 from databaseFunctions import createProcessingDatabase, createResultDatabase, insertEventsIntoDatabase, updateProcessingStatus
 from processing_functions import getConnectedEvents, update_top_n, getExistingTopTen
 from concurrent.futures import ThreadPoolExecutor
+import logging
 
-PROCESSING_FOLDER = "./testProcessing/"
+PROCESSING_FOLDER = "/projects/ag-schultz/"
 PROCESSING_DB = f"{PROCESSING_FOLDER}processing.sql"
-RESULT_FOLDER = "./results/"
+RESULT_FOLDER = "/projects/ag-schultz//results/"
 RESULT_DB = f"{RESULT_FOLDER}results.sql"
+MAX_WORKERS = 1
+
+logging.basicConfig(
+    filename="processing.log",  # Save logs to a file
+    level=logging.INFO,  # Log levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    format="%(asctime)s - %(levelname)s - %(message)s",  # Log format
+)
 
 class ProcessingFactory:
 
@@ -162,15 +169,14 @@ def processWind(datasetFilepath):
     windTop10 = update_top_n(windDataset, "windspeed", oldTop10=currentTopTenDS)
 
     # close old top 10 file
-    currentTopTenDS.close()
+    if currentTopTenDS:
+       currentTopTenDS.close()
 
     windTop10.to_netcdf(f"{RESULT_FOLDER}top10{filename}.nc")
     windTop10.close()
 
-
     # threshold beaufort 9
     windspeedThreshold = getConnectedEvents(windDataset, "windspeed", 20.8)
-
     insertEventsIntoDatabase(RESULT_DB, "windspeedDaily", windspeedThreshold)
 
     windDataset.close()
@@ -201,7 +207,8 @@ def processWindgust(datasetFilepath):
     windTop10 = update_top_n(windgustDataset, "i10fg", oldTop10=currentTopTenDS)
 
     # close old top 10 file
-    currentTopTenDS.close()
+    if currentTopTenDS:
+       currentTopTenDS.close()
 
     # save results and close everything
     windTop10.to_netcdf(f"{RESULT_FOLDER}top10{filename}.nc")
@@ -212,10 +219,8 @@ def processWindgust(datasetFilepath):
 
 
 def processingManager(arguments):
-
-    var,year = arguments.split(":")
-    year = int(year)
-
+    logging.info("Processing manager started for %s", arguments)
+    year,var = arguments.split(":")
     filepath = f"{PROCESSING_FOLDER}{var}_{year}.nc"
 
     try:
@@ -223,11 +228,12 @@ def processingManager(arguments):
         updateProcessingStatus(PROCESSING_DB,year, var, "processing")
         processor(filepath)
     except ValueError as e:
-        print(f"Error: {e}")
+        logging.error("Invalid processing type: %s - Error: %s", arguments, str(e))
     except Exception as e:
-        print(f"Unexpected error while processing variable {var} data: {e}")
+        logging.exception("Unexpected error while processing %s - %s", arguments, str(e))
 
-    updateProcessingStatus("processed")
+    updateProcessingStatus(PROCESSING_DB,year, var, "processed")
+    logging.info("Processing finished for %s", arguments)
 
 def pack_records(records):
     arguments = []
@@ -237,13 +243,14 @@ def pack_records(records):
     return arguments
 
 def main():
-    #print("test")
+    logging.info("Starting main processing script")
     # establish sql connection to database
     connection = sqlite3.connect(PROCESSING_DB)
     cursor = connection.cursor()
 
     exists = cursor.execute("Select exists(select 1 from sqlite_master where type = 'table' and name = 'processing')").fetchone()[0]
     if exists == 0:
+        logging.info("Processing database does not exist yet. Creating it...")
         createProcessingDatabase(PROCESSING_FOLDER, PROCESSING_DB)
 
     # get everything that has either not been done yet or failed
@@ -255,9 +262,13 @@ def main():
 
     arguments = pack_records(records)
     createResultDatabase(RESULT_DB)
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        executor.map(processingManager, arguments)
 
+
+    logging.info("Starting parallel processing with %d workers.", MAX_WORKERS)
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        executor.map(processingManager, arguments)
+    logging.info("Processing completed successfully.")
 
 if __name__ == "__main__":
     main()
