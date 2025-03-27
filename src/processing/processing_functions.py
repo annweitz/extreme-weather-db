@@ -229,7 +229,7 @@ def getConnectedEvents(dataset,variable, threshold, latitudeDim = "latitude", lo
 
 def getExistingTopTen(resultsFolder, varName):
     try:
-        top10Dataset = xr.open_dataset(f"{resultsFolder}/top10{varName}.nc")
+        top10Dataset = xr.open_dataset(f"{resultsFolder}top10{varName}.nc")
         return top10Dataset
     except FileNotFoundError:
         return None

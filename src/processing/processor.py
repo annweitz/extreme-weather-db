@@ -2,7 +2,7 @@ import sqlite3
 import pandas as pd
 import numpy as np
 import xarray as xr
-from databaseFunctions import createProcessingDatabase, createResultDatabase, insertEventsIntoDatabase
+from databaseFunctions import createProcessingDatabase, createResultDatabase, insertEventsIntoDatabase, updateProcessingStatus
 from processing_functions import getConnectedEvents, update_top_n, getExistingTopTen
 from concurrent.futures import ThreadPoolExecutor
 
@@ -28,7 +28,8 @@ class ProcessingFactory:
 
 ProcessingFactory.registerProcessor("precipitation", lambda path: processPrecipitation(path))
 ProcessingFactory.registerProcessor("temperature", lambda path: processTemperature(path))
-
+ProcessingFactory.registerProcessor("wind", lambda path: processWind(path))
+ProcessingFactory.registerProcessor("windgust", lambda path: processWindgust(path))
 
 
 
@@ -140,6 +141,76 @@ def processTemperature(datasetPath):
 
     temperatureDS.close()
 
+def processWind(datasetFilepath):
+
+    filename = "wind"
+    # open dataset
+    windDataset = xr.open_dataset(datasetFilepath)
+
+    # Preprocessing:
+    # - combine u and v components to form windspeed
+    # - drop not needed variables: u,v, i10fg and number
+
+    windspeed = np.sqrt(windDataset["u10"]**2 + windDataset["v10"]**2)
+    windDataset["windspeed"] = windspeed
+    windDataset = windDataset.drop_vars(["v10","u10","i10fg", "number"])
+
+    # Get current top 10, if it already exists
+    currentTopTenDS = getExistingTopTen(RESULT_FOLDER, filename)
+
+    # get new top 10
+    windTop10 = update_top_n(windDataset, "windspeed", oldTop10=currentTopTenDS)
+
+    # close old top 10 file
+    currentTopTenDS.close()
+
+    windTop10.to_netcdf(f"{RESULT_FOLDER}top10{filename}.nc")
+    windTop10.close()
+
+
+    # threshold beaufort 9
+    windspeedThreshold = getConnectedEvents(windDataset, "windspeed", 20.8)
+
+    insertEventsIntoDatabase(RESULT_DB, "windspeedDaily", windspeedThreshold)
+
+    windDataset.close()
+
+
+
+def processWindgust(datasetFilepath):
+    filename = "windgustHourly"
+
+    windgustDataset = xr.open_dataset(datasetFilepath)
+
+    # Preprocessing:
+    # drop unused coordinates: number, exp_ver
+    windgustDataset = windgustDataset.drop_vars(["number", "expver"])
+
+    # calculate events that exceed beaufort 10
+    windgustThreshold = getConnectedEvents(windgustDataset, "i10fg", 24.5)
+
+    # save events in database
+    insertEventsIntoDatabase(f"{RESULT_DB}", "windgustHourly", windgustThreshold)
+
+    '''
+    # Top 10
+    # Get current top 10, if it already exists
+    currentTopTenDS = getExistingTopTen(RESULT_FOLDER, filename)
+
+    # get new top 10
+    windTop10 = update_top_n(windgustDataset, "i10fg", oldTop10=currentTopTenDS)
+
+    # close old top 10 file
+    currentTopTenDS.close()
+
+    # save results and close everything
+    windTop10.to_netcdf(f"{RESULT_FOLDER}top10{filename}.nc")
+    windTop10.close()
+    '''
+
+    windgustDataset.close()
+
+
 def processingManager(arguments):
 
     var,year = arguments.split(":")
@@ -149,15 +220,15 @@ def processingManager(arguments):
 
     try:
         processor = ProcessingFactory.getProcessor(var)
+        updateProcessingStatus(PROCESSING_DB,year, var, "processing")
         processor(filepath)
     except ValueError as e:
         print(f"Error: {e}")
     except Exception as e:
         print(f"Unexpected error while processing variable {var} data: {e}")
 
+    updateProcessingStatus("processed")
 
-
-    pass
 def pack_records(records):
     arguments = []
     for row in records:
