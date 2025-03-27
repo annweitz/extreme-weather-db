@@ -23,7 +23,7 @@ def createProcessingDatabase(pathToFiles, pathToProcessingDB, tablename = "proce
     cursor = connection.cursor()
 
     # Create table
-    cursor.execute(f"CREATE TABLE {tablename} (id INTEGER PRIMARY KEY, year INTEGER, variable TEXT, status TEXT)")
+    cursor.execute(f"CREATE TABLE {tablename} (id INTEGER PRIMARY KEY, variable TEXT, year INTEGER, status TEXT)")
 
     # get all .nc files in directory
     files = [x for x in glob.glob(f"{pathToFiles}*.nc")]
@@ -40,7 +40,7 @@ def createProcessingDatabase(pathToFiles, pathToProcessingDB, tablename = "proce
             data.append(x)
 
     # Insert all results into the table
-    connection.executemany(f"INSERT INTO {tablename} (year, variable, status) VALUES (?,?,'unprocessed')", data)
+    connection.executemany(f"INSERT INTO {tablename} (variable, year,  status) VALUES (?,?,'unprocessed')", data)
     connection.commit()
 
     # Close the connection
@@ -62,7 +62,7 @@ def createResultDatabase(pathToResultDB, tableName = "thresholdResults"):
     connection = sqlite3.connect(pathToResultDB)
     cursor = connection.cursor()
 
-    exists = cursor.execute("Select exists(select 1 from sqlite_master where type = 'table' and name = 'processing')").fetchone()[0]
+    exists = cursor.execute(f"Select exists(select 1 from sqlite_master where type = 'table' and name = {tableName})").fetchone()[0]
     if exists == 0:
         # Create table
         cursor.execute(f"CREATE TABLE {tableName} (id INTEGER PRIMARY KEY, "
