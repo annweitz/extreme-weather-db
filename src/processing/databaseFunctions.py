@@ -62,7 +62,7 @@ def createResultDatabase(pathToResultDB, tableName = "thresholdResults"):
     connection = sqlite3.connect(pathToResultDB)
     cursor = connection.cursor()
 
-    exists = cursor.execute(f"Select exists(select 1 from sqlite_master where type = 'table' and name = {tableName})").fetchone()[0]
+    exists = cursor.execute(f"Select exists(select 1 from sqlite_master where type = 'table' and name = '{tableName}')").fetchone()[0]
     if exists == 0:
         # Create table
         cursor.execute(f"CREATE TABLE {tableName} (id INTEGER PRIMARY KEY, "
