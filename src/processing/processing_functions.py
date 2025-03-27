@@ -1,5 +1,7 @@
 import numpy as np
 import xarray as xr
+from scipy.ndimage import label
+from xarray import apply_ufunc
 
 def update_top_n(dataset, data_var, time_var="valid_time", oldTop10=None, highest = True, topN=10, ):
     """
@@ -146,3 +148,88 @@ def update_top_n(dataset, data_var, time_var="valid_time", oldTop10=None, highes
     })
 
     return result
+
+
+def labelSlice(slice_2d, diagonals = True):
+
+    if diagonals:
+        event_structure = np.array([[1,1,1],
+                                    [1,1,1],
+                                    [1,1,1]])
+    else:
+        event_structure = np.array([[0, 1, 0],
+                                    [1, 1, 1],
+                                    [0, 1, 0]])
+
+    labeled, _ = label(slice_2d, structure=event_structure)
+    return labeled
+
+def getLabeledEvents(mask, latitudeDim = "latitude", longitudeDim = "longitude"):
+    labeledEvents = apply_ufunc(
+        labelSlice,
+        mask,
+        input_core_dims=[[latitudeDim,longitudeDim]],
+        output_core_dims=[[latitudeDim,longitudeDim]],
+        vectorize=True,
+        dask="parallelized",
+        output_dtypes=[int]
+    )
+    return labeledEvents
+
+def getConnectedEvents(dataset,variable, threshold, latitudeDim = "latitude", longitudeDim = "longitude", timeDim = "valid_time"):
+
+    allEvents = []
+
+    # Create a mask with the threshold
+    mask = dataset[variable] > threshold
+
+    labeledEvents = getLabeledEvents(mask, latitudeDim=latitudeDim, longitudeDim= longitudeDim)
+
+    for idx, t in enumerate(dataset[timeDim]):
+
+        # Get the slice for this timestep
+        labeledSlice = labeledEvents.isel({timeDim : idx})
+
+        # Broadcast latitude and longitude to 2D so they match the grid
+        lat2d = dataset[latitudeDim].broadcast_like(labeledSlice)
+        lon2d = dataset[longitudeDim].broadcast_like(labeledSlice)
+
+        # For each labeled event in this time slice
+        for eventLabel in np.unique(labeledSlice.values):
+
+            # Ignore 0, this is background
+            if (eventLabel == 0):
+                continue
+
+            eventMask = labeledSlice == eventLabel
+
+            # Extract grid cell values that correspond to this event
+            eventLatitudes = lat2d.where(eventMask, drop= True)
+            eventLongitudes = lon2d.where(eventMask, drop = True)
+            eventVariableValues = dataset[variable].isel({timeDim: idx}).where(eventMask, drop = True)
+
+            # Event data to save:
+            eventData = {
+                'eventTime': str(t.values),
+                'eventID': int(eventLabel),
+                'minLatitude': float(eventLatitudes.min().item()),
+                'maxLatitude': float(eventLatitudes.max().item()),
+                'minLongitude': float(eventLongitudes.min().item()),
+                'maxLongitude': float(eventLongitudes.max().item()),
+                'centroidLatitude': float(eventLatitudes.mean().item()),
+                'centroidLongitude': float(eventLongitudes.mean().item()),
+                'maxEventValue': float(eventVariableValues.max().item()),
+                'meanEventValue': float(eventVariableValues.mean().item()),
+                'areaInCells': int(eventMask.sum().item())
+            }
+
+            allEvents.append(eventData)
+
+    return allEvents
+
+def getExistingTopTen(resultsFolder, varName):
+    try:
+        top10Dataset = xr.open_dataset(f"{resultsFolder}top10{varName}.nc")
+        return top10Dataset
+    except FileNotFoundError:
+        return None

@@ -47,6 +47,16 @@ def createProcessingDatabase(pathToFiles, pathToProcessingDB, tablename = "proce
     cursor.close()
     connection.close()
 
+def updateProcessingStatus(pathToProcessingDB, year, var, status):
+    connection = sqlite3.connect(pathToProcessingDB)
+    cursor = connection.cursor()
+
+    cursor.execute(f"UPDATE processing SET status = '{status}' WHERE year={year} AND variable = '{var}'")
+    connection.commit()
+
+    cursor.close()
+    connection.close()
+
 def createResultDatabase(pathToResultDB, tableName = "thresholdResults"):
     # establish sql connection to database
     connection = sqlite3.connect(pathToResultDB)
