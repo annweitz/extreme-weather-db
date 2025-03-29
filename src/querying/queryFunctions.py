@@ -66,7 +66,7 @@ def getTop10Datasets(resultFolder = RESULT_FOLDER):
     :param resultFolder: The folder that contains the results. Default: The filepath specified in the config
     :return: An array containing opened datasets for all top ten results that are present in the result folder.
     """
-    datasets = [[x.split("top10")[1].replace(".nc", ""),open_dataset(x)] for x in glob.glob(RESULT_FOLDER + f"/top10*.nc")]
+    datasets = [[x.split("top10")[1].replace(".nc", ""),open_dataset(x)] for x in glob.glob(RESULT_FOLDER.__str__() + f"/top10*.nc")]
     return datasets
 
 
