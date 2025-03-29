@@ -1,0 +1,53 @@
+precipitation:
+  displayName: "Total Precipitation"
+  unit: "m water equivalent"
+  description: "The total amount of precipitation, including rain and snow, accumulated over a given period."
+  datasetValueName: "tp"
+
+temperatureLow:
+  displayName: "Lowest Temperatures"
+  unit: "Kelvin"
+  description: "The minimum recorded temperature over a specified time period, typically daily."
+  datasetValueName: "t"
+
+temperatureHigh:
+  displayName: "Highest Temperatures"
+  unit: "Kelvin"
+  description: "The maximum recorded temperature over a specified time period, typically daily."
+  datasetValueName: "t"
+
+wind:
+  displayName: "Windspeed"
+  unit: "meter per second"
+  description: "The average speed of the wind over a given time period."
+  datasetValueName: "windspeed"
+
+rainDaily:
+  displayName: "Daily Rain"
+  unit: "m water equivalent"
+  description: "The total amount of rainfall accumulated over a 24-hour period."
+  datasetValueName: "tp"
+
+snowDaily:
+  displayName: "Daily Snow"
+  unit: "m water equivalent"
+  description: "The total amount of snowfall accumulated over a 24-hour period."
+  datasetValueName: "tp"
+
+rainHourly:
+  displayName: "Hourly Rain"
+  unit: "m water equivalent"
+  description: "The total amount of rainfall accumulated within an hour."
+  datasetValueName: "tp"
+
+windspeedDaily:
+  displayName: "Daily Windspeed"
+  unit: "meter per second"
+  description: "The average wind speed measured over a 24-hour period."
+  datasetValueName: "windspeed"
+
+windgustHourly:
+  displayName: "Hourly Wind Gusts"
+  unit: "meter per second"
+  description: "The peak wind gust speed recorded within an hour."
+  datasetValueName: "i10fg"

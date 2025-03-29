@@ -5,15 +5,11 @@ from databaseFunctions import createProcessingDatabase, createResultDatabase, in
 from processing_functions import getConnectedEvents, update_top_n, getExistingTopTen
 from concurrent.futures import ThreadPoolExecutor
 import logging
+from src.config import PROCESSING_FOLDER, PROCESSING_DATABASE, RESULT_FOLDER, RESULT_DATABASE, MAX_WORKERS_PROCESSING
 
-PROCESSING_FOLDER = "/projects/ag-schultz/"
-PROCESSING_DB = f"{PROCESSING_FOLDER}processing.sql"
-RESULT_FOLDER = "/projects/ag-schultz//results/"
-RESULT_DB = f"{RESULT_FOLDER}results.sql"
-MAX_WORKERS = 1
 
 logging.basicConfig(
-    filename="processing.log",  # Save logs to a file
+    filename=f"{PROCESSING_FOLDER}processing.log",  # Save logs to a file
     level=logging.INFO,  # Log levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
     format="%(asctime)s - %(levelname)s - %(message)s",  # Log format
 )
@@ -67,7 +63,7 @@ def processPrecipitation(datasetPath):
     rainHourlyThreshold = getConnectedEvents(rainHourlyDS, "tp", 0.1)
 
     # Insert events into results database
-    insertEventsIntoDatabase(f"{RESULT_DB}", "rainHourly", rainHourlyThreshold)
+    insertEventsIntoDatabase(f"{RESULT_DATABASE}", "rainHourly", rainHourlyThreshold)
 
     # Drop ptype to save time and computational space, we don't need it for these calculations
     precipDataset = precipDataset.drop_vars(["ptype"])
@@ -92,7 +88,7 @@ def processPrecipitation(datasetPath):
     rainDailyDS  = rainHourlyDS.coarsen(valid_time = 24).sum()
     rainDailyThreshold = getConnectedEvents(rainDailyDS, "tp", 0.2)
 
-    insertEventsIntoDatabase(f"{RESULT_DB}", "rainDaily", rainDailyThreshold)
+    insertEventsIntoDatabase(f"{RESULT_DATABASE}", "rainDaily", rainDailyThreshold)
 
 
     rainHourlyDS.close()
@@ -101,7 +97,7 @@ def processPrecipitation(datasetPath):
     snowDailyDS = snowHourlyDS.coarsen(valid_time = 24).sum()
     snowDailyThreshold = getConnectedEvents(snowDailyDS, "tp", 0.1)
 
-    insertEventsIntoDatabase(f"{RESULT_DB}", "snowDaily", snowDailyThreshold)
+    insertEventsIntoDatabase(f"{RESULT_DATABASE}", "snowDaily", snowDailyThreshold)
 
     snowHourlyDS.close()
     snowDailyDS.close()
@@ -177,7 +173,7 @@ def processWind(datasetFilepath):
 
     # threshold beaufort 9
     windspeedThreshold = getConnectedEvents(windDataset, "windspeed", 20.8)
-    insertEventsIntoDatabase(RESULT_DB, "windspeedDaily", windspeedThreshold)
+    insertEventsIntoDatabase(RESULT_DATABASE, "windspeedDaily", windspeedThreshold)
 
     windDataset.close()
 
@@ -196,7 +192,7 @@ def processWindgust(datasetFilepath):
     windgustThreshold = getConnectedEvents(windgustDataset, "i10fg", 24.5)
 
     # save events in database
-    insertEventsIntoDatabase(f"{RESULT_DB}", "windgustHourly", windgustThreshold)
+    insertEventsIntoDatabase(f"{RESULT_DATABASE}", "windgustHourly", windgustThreshold)
 
     '''
     # Top 10
@@ -225,14 +221,14 @@ def processingManager(arguments):
 
     try:
         processor = ProcessingFactory.getProcessor(var)
-        updateProcessingStatus(PROCESSING_DB,year, var, "processing")
+        updateProcessingStatus(PROCESSING_DATABASE,year, var, "processing")
         processor(filepath)
     except ValueError as e:
         logging.error("Invalid processing type: %s - Error: %s", arguments, str(e))
     except Exception as e:
         logging.exception("Unexpected error while processing %s - %s", arguments, str(e))
 
-    updateProcessingStatus(PROCESSING_DB,year, var, "processed")
+    updateProcessingStatus(PROCESSING_DATABASE,year, var, "processed")
     logging.info("Processing finished for %s", arguments)
 
 def pack_records(records):
@@ -244,29 +240,34 @@ def pack_records(records):
 
 def main():
     logging.info("Starting main processing script")
+    logging.info(f"Processing folder: {PROCESSING_FOLDER}")
+    logging.info(f"Processing database: {PROCESSING_DATABASE}")
+    logging.info(f"Result folder: {RESULT_FOLDER}")
+    logging.info(f"Result db: {RESULT_DATABASE}")
+
     # establish sql connection to database
-    connection = sqlite3.connect(PROCESSING_DB)
+    connection = sqlite3.connect(PROCESSING_DATABASE)
     cursor = connection.cursor()
 
-    exists = cursor.execute("Select exists(select 1 from sqlite_master where type = 'table' and name = 'processing')").fetchone()[0]
+    exists = cursor.execute("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'processing')").fetchone()[0]
     if exists == 0:
         logging.info("Processing database does not exist yet. Creating it...")
-        createProcessingDatabase(PROCESSING_FOLDER, PROCESSING_DB)
+        createProcessingDatabase(PROCESSING_FOLDER, PROCESSING_DATABASE)
 
     # get everything that has either not been done yet or failed
-    res = cursor.execute(f"select year,variable from processing where not status = 'processed' order by year desc")
+    res = cursor.execute(f"SELECT year,variable FROM processing WHERE NOT status = 'processed' ORDER BY year DESC")
     records = res.fetchall()
 
     cursor.close()
     connection.close()
 
     arguments = pack_records(records)
-    createResultDatabase(RESULT_DB)
+    createResultDatabase(RESULT_DATABASE)
 
 
-    logging.info("Starting parallel processing with %d workers.", MAX_WORKERS)
+    logging.info("Starting parallel processing with %d workers.", MAX_WORKERS_PROCESSING)
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS_PROCESSING) as executor:
         executor.map(processingManager, arguments)
     logging.info("Processing completed successfully.")
 

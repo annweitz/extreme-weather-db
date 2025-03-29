@@ -3,8 +3,8 @@ import sys
 import os
 import yaml
 import folium
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src', '..')))
+from src.config import METADATA
 from src.querying.queryFunctions import getAllRecordsForCity, getAllTopTensForCity, groupEventsByTime, get_lat_lon
 from src.utils.unitConversion import getAvailableConversions,getConversionFunction
 
@@ -14,7 +14,7 @@ def getCityLatLon(city):
 
 @st.cache_data
 def loadMetadata():
-    with open("C:/Users/Ann/PyCharmProjects/extreme-weather-db/metadata.yaml", "r") as file:
+    with open(METADATA, "r") as file:
         metadata = yaml.safe_load(file)
     return metadata
 
