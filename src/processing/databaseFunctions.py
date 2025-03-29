@@ -2,6 +2,7 @@ import glob
 import os.path
 import sqlite3
 import os
+import pandas as pd
 
 def splitFilename(filename):
     try:
@@ -115,3 +116,15 @@ def insertEventsIntoDatabase(pathToResultDB, eventType,events, tableName = "thre
     # Close the connection
     cursor.close()
     connection.close()
+
+
+def resultDatabaseRecordsToDataframe(records):
+    """
+    Converts records from the result database into a dataframe. Also changes eventTime to datetime format.
+    :param records: Records from the result database
+    :return: A dataframe containing the records.
+    """
+    df =  pd.DataFrame(records, columns=["id", "eventType", "eventTime", "minLatitude", "maxLatitude", "minLongitude", "maxLongitude",
+                                        "centroidLatitude", "centroidLongitude", "maxEventValue", "meanEventValue", "eventArea"])
+    df["eventTime"] = pd.to_datetime(df["eventTime"])
+    return df
