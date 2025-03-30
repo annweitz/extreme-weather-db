@@ -16,6 +16,11 @@ dask = "2024.6.0"
 scikit-image = "^0.25.2"
 pandas = "2.2.3"
 streamlit = "1.43.2"
+folium = "0.19.5"
+geopy = "2.4.1"
+pytest = "8.3.5"
+cartopy = "0.24.1"
+matplotlib = "3.10.1"
 
 
 [build-system]
