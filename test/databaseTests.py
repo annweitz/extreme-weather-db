@@ -3,7 +3,7 @@ import sqlite3
 import unittest
 
 from src.processing.databaseFunctions import splitFilename, createProcessingDatabase, updateProcessingStatus, \
-    createResultDatabase, insertEventsIntoDatabase, resultDatabaseRecordsToDataframe
+    createResultDatabase, insertEventsIntoDatabase, resultDatabaseRecordsToDataframe, updateProcessingDatabase
 
 
 class TestProcessingDatabase(unittest.TestCase):
@@ -59,6 +59,25 @@ class TestProcessingDatabase(unittest.TestCase):
 
 
     def testUpdateProcessingDatabase(self):
+
+        createProcessingDatabase("", self.testProcessingDatabase)
+
+        connection = sqlite3.connect(self.testProcessingDatabase)
+        cursor = connection.cursor()
+
+        records = cursor.execute("SELECT * FROM processing").fetchall()
+
+        self.assertEqual(len(records),0)
+
+        updateProcessingDatabase(self.testDirectory, self.testProcessingDatabase)
+
+        records = cursor.execute("SELECT * FROM processing").fetchall()
+        self.assertEqual(len(records),1)
+
+        cursor.close()
+        connection.close()
+
+    def testUpdateProcessingStatus(self):
         createProcessingDatabase(self.testDirectory, self.testProcessingDatabase)
         updateProcessingStatus(self.testProcessingDatabase, 2023, "var", "processed")
 

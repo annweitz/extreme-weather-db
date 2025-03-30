@@ -3,6 +3,7 @@ import os.path
 import sqlite3
 import os
 import pandas as pd
+from src.config import PROCESSING_FOLDER, PROCESSING_DATABASE, RESULT_DATABASE
 
 def splitFilename(filename):
     try:
@@ -18,7 +19,13 @@ def splitFilename(filename):
         return (var, year)
 
 
-def createProcessingDatabase(pathToFiles, pathToProcessingDB, tablename = "processing"):
+def createProcessingDatabase(pathToFiles = PROCESSING_FOLDER, pathToProcessingDB = PROCESSING_DATABASE, tablename = "processing"):
+    """
+    Creates a table for storing the processing status of all .nc files contained in pathToFiles.
+    :param pathToFiles: Path to files to process. Default: PROCESSING_FOLDER path specified in config
+    :param pathToProcessingDB: Path to the processing database. Default: PROCESSING_DATABASE path specified in config
+    :param tablename: Name for the processing table. Default: processing
+    """
     # establish sql connection to database
     connection = sqlite3.connect(pathToProcessingDB)
     cursor = connection.cursor()
@@ -27,7 +34,7 @@ def createProcessingDatabase(pathToFiles, pathToProcessingDB, tablename = "proce
     cursor.execute(f"CREATE TABLE {tablename} (id INTEGER PRIMARY KEY, variable TEXT, year INTEGER, status TEXT)")
 
     # get all .nc files in directory
-    files = [x for x in glob.glob(f"{pathToFiles}*.nc")]
+    files = [x for x in glob.glob(f"{pathToFiles.__str__()}*.nc")]
 
     # read filenames into data
     data = []
@@ -47,6 +54,54 @@ def createProcessingDatabase(pathToFiles, pathToProcessingDB, tablename = "proce
     # Close the connection
     cursor.close()
     connection.close()
+
+
+def updateProcessingDatabase(pathToFiles = PROCESSING_FOLDER, pathToProcessingDB = PROCESSING_DATABASE, tablename="processing"):
+    """
+
+    :param pathToFiles: Path to files to process. Default: PROCESSING_FOLDER path specified in config
+    :param pathToProcessingDB: Path to the processing database. Default: PROCESSING_DATABASE path specified in config
+    :param tablename: Name for the processing table. Default: processing
+    :return: The number of new records created in the database
+    """
+
+    # Establish SQL connection to the database
+    connection = sqlite3.connect(pathToProcessingDB)
+    cursor = connection.cursor()
+
+    # Get all .nc files in the directory
+    files = [x for x in glob.glob(f"{pathToFiles.__str__()}*.nc")]
+
+    # Read filenames into data
+    data = []
+    for file in files:
+        file = os.path.basename(file)
+        x = splitFilename(file)  # Assuming this function extracts (variable, year)
+        if x == (None, None):
+            continue
+
+        variable, year = x
+
+        # Check if the record already exists
+        cursor.execute(f"SELECT COUNT(*) FROM {tablename} WHERE variable = ? AND year = ?", (variable, year))
+        exists = cursor.fetchone()[0]
+
+        if exists == 0:
+            data.append((variable, year))
+
+    # Insert new records
+    if data:
+        cursor.executemany(f"INSERT INTO {tablename} (variable, year, status) VALUES (?, ?, 'unprocessed')", data)
+        connection.commit()
+        numNewRecords = len(data)
+    else:
+        numNewRecords = 0
+
+    # Close the connection
+    cursor.close()
+    connection.close()
+
+    return numNewRecords
 
 def updateProcessingStatus(pathToProcessingDB, year, var, status):
     connection = sqlite3.connect(pathToProcessingDB)
