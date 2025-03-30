@@ -96,7 +96,7 @@ def getTopTenForCityForEventType(cityname, eventType):
     :return: A dataframe containing the top ten values and timestamps
     """
     try:
-        dataset = open_dataset(RESULT_FOLDER + f"top10{eventType}.nc")
+        dataset = open_dataset(RESULT_FOLDER.__str__() + f"top10{eventType}.nc")
         return getTop10City(dataset, cityname)
     except FileNotFoundError:
         raise FileNotFoundError
