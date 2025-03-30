@@ -37,8 +37,8 @@ def processTemperature(datasetPath):
         currentTopTenDS.close()
 
     # save and close
-    temperatureTop10.to_netcdf(f"{RESULT_FOLDER}/top10temperatureLow.nc")
-    temperatureTop10.close()
+    temperatureLow10.to_netcdf(f"{RESULT_FOLDER}/top10temperatureLow.nc")
+    temperatureLow10.close()
 
 
     temperatureDS.close()
