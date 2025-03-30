@@ -66,7 +66,7 @@ def getTop10Datasets(resultFolder = RESULT_FOLDER):
     :param resultFolder: The folder that contains the results. Default: The filepath specified in the config
     :return: An array containing opened datasets for all top ten results that are present in the result folder.
     """
-    datasets = [[x.split("top10")[1].replace(".nc", ""),open_dataset(x)] for x in glob.glob(RESULT_FOLDER.__str__() + f"/top10*.nc")]
+    datasets = [[x.split("top10")[1].replace(".nc", ""),open_dataset(x)] for x in glob.glob(RESULT_FOLDER + f"/top10*.nc")]
     return datasets
 
 
@@ -96,7 +96,7 @@ def getTopTenForCityForEventType(cityname, eventType):
     :return: A dataframe containing the top ten values and timestamps
     """
     try:
-        dataset = open_dataset(RESULT_FOLDER.__str__() + f"top10{eventType}.nc")
+        dataset = open_dataset(RESULT_FOLDER + f"top10{eventType}.nc")
         return getTop10City(dataset, cityname)
     except FileNotFoundError:
         raise FileNotFoundError

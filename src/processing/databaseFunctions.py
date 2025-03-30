@@ -34,7 +34,7 @@ def createProcessingDatabase(pathToFiles = PROCESSING_FOLDER, pathToProcessingDB
     cursor.execute(f"CREATE TABLE {tablename} (id INTEGER PRIMARY KEY, variable TEXT, year INTEGER, status TEXT)")
 
     # get all .nc files in directory
-    files = [x for x in glob.glob(f"{pathToFiles.__str__()}*.nc")]
+    files = [x for x in glob.glob(f"{pathToFiles}*.nc")]
 
     # read filenames into data
     data = []
@@ -70,7 +70,7 @@ def updateProcessingDatabase(pathToFiles = PROCESSING_FOLDER, pathToProcessingDB
     cursor = connection.cursor()
 
     # Get all .nc files in the directory
-    files = [x for x in glob.glob(f"{pathToFiles.__str__()}*.nc")]
+    files = [x for x in glob.glob(f"{pathToFiles}*.nc")]
 
     # Read filenames into data
     data = []
