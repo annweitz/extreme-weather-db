@@ -146,8 +146,14 @@ streamlit run .\streamlitVisualization\extreme-weather-db.py
 
 ## Examples
 
+### Threshold Detection of Windgusts over Cologne
+
+![Alt Text](results/threshold.png)
 
 
+### Global Top 10 Ranks of Highest Temperatures
+
+![Alt Text](results/top 10.png)
 
 ##  How the Tool Works
 
