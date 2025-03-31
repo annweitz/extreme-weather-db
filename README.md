@@ -9,7 +9,7 @@ An extreme weather database project developed during the **Advanced Earth System
 This project processes and analyzes climate data to detect **extreme weather events** that occurred between **2000 and 2023**. It utilizes datasets obtained from the **ERA5 reanalysis archive** provided by the Copernicus Climate Data Store (CDS).
 
 The core variables include:
-- **Temperature** at 2 meters
+- **Temperature** (2m T2m)
 - **Precipitation**
 - **Wind** (u and v components at 10 meters)
 - **Wind gusts** (instantaneous at 10 meters)
