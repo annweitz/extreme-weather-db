@@ -54,7 +54,7 @@ def createMap(city, df, selectedIndex):
 
     return m
 
-def displayEventData(city):
+def displayEventData(city, metadata):
 
     st.header("Thresholds")
 
@@ -64,18 +64,65 @@ def displayEventData(city):
     # Group events that (time-wise) associated events together
     grouped = groupEventsByTime(records)
 
-    select = st.dataframe(grouped, selection_mode="single-row", on_select="rerun")
+    columnConfigRecords = {
+        "eventType" : "Event type",
+        "startTime" : "First time step",
+        "endTime" : "Last time step"
+    }
+
+    select = st.dataframe(grouped, selection_mode="single-row", on_select="rerun", column_config=columnConfigRecords, hide_index=True)
 
     # If an event has been selected, show further data, otherwise prompt the user to select an event
     try:
         # Get all events that belong to the selected records and display them
         event = grouped.iloc[select.selection.rows[0]]
+        eventType = event["eventType"]
+        eventDescription = metadata[eventType]["description"]
+        eventUnit = metadata[eventType]["unit"]
+        eventDisplayName = metadata[eventType]["displayName"]
+
+        unitOptions = getAvailableConversions(eventUnit)
+        unitOptions.append(eventUnit)
+
+        st.subheader(f"Data description - {eventDisplayName}")
+        st.write(eventDescription)
+
+
+        unitSelect = st.selectbox("Unit: ", unitOptions, index=len(unitOptions) - 1)
+        # If selected unit is the unit the dataset is in, we dont need to convert anything
+        if unitSelect == eventUnit:
+            conversionLambda = None
+        # Otherwise get the conversion function
+        else:
+            conversionLambda = getConversionFunction(eventUnit, unitSelect)
+
+
         eventRecords = getMatchingRecords(event, records)
-        st.dataframe(eventRecords)
+        eventRecords.drop(["id", "eventType"],axis=1, inplace = True)
+        #
+        if conversionLambda:
+            eventRecords["maxEventValue"] = conversionLambda(eventRecords["maxEventValue"])
+            eventRecords["meanEventValue"] = conversionLambda(eventRecords["meanEventValue"])
+
+        columnConfigEvent = {
+            "eventTime": "Event Time",
+            "maxEventValue": "Max Value",
+            "meanEventValue": "Mean Value",
+            "eventArea": "Event Area",
+            "centroidLatitude": "Centroid Lat",
+            "centroidLongitude": "Centroid Lon",
+            "minLatitude": "Min Lat",
+            "maxLatitude": "Max Lat",
+            "minLongitude": "Min Lon",
+            "maxLongitude": "Max Lon",
+        }
+
+        st.dataframe(eventRecords[["eventTime", "maxEventValue", "meanEventValue", "eventArea" ,"centroidLatitude",
+                                   "centroidLongitude", "minLatitude","maxLatitude", "minLongitude", "maxLongitude"]], hide_index=True, column_config=columnConfigEvent)
 
         # If the event only has one time-step, we don't need a slider to switch through them
         if(len(eventRecords)>1):
-            selected_index = st.slider("Select Layer", 0, len(eventRecords) - 1, 0)
+            selected_index = st.slider("Select timestep", 1, len(eventRecords) , 1) -1
         else:
             selected_index = 0
 
@@ -159,13 +206,15 @@ def displayTopTenData(city, metadata):
         df[valuename] = conversionLambda(df[valuename])
     # Display table
     st.table(df)
+    st.subheader(f"Data description - {topTenSelection}")
+    st.write(metadata[variable]["description"])
 
 
 def app():
     st.title("Extreme weather database")
     metadata = loadMetadata()
     city = st.text_input("Enter a city", "Köln")
-    displayEventData(city)
+    displayEventData(city, metadata)
     displayTopTenData(city, metadata)
 
 if __name__ == "__main__":

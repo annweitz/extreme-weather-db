@@ -91,6 +91,8 @@ def app():
 
     fig = getMapFigure(datasets.get(variable), rank, f'top_{metadata[variable]["datasetValueName"]}', conversionLambda =conversionLambda )
     st.pyplot(fig = fig)
+    st.subheader(f"Data description - {topTenSelection}")
+    st.write(metadata[variable]["description"])
 
 if __name__ == "__main__":
     app()
