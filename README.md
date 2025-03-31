@@ -153,7 +153,7 @@ streamlit run .\streamlitVisualization\extreme-weather-db.py
 
 ### Global Top 10 Ranks of Highest Temperatures
 
-![Alt Text](results/top 10.png)
+![Alt Text](results/top-10.png)
 
 ##  How the Tool Works
 
