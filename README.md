@@ -45,7 +45,7 @@ The dataset is analyzed and stored in a **SQLite database**, supporting two prim
 
 ---
 
-### ⚙️ Data Access & Setup
+### Data Access & Setup
 
 To use the download functionality:
 - Create a **CDS account** and agree to the license terms
