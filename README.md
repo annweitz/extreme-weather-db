@@ -226,7 +226,7 @@ This function handles **threshold-based** and **top-N precipitation event detect
 - Spatially and temporally connected exceedances are grouped using `getConnectedEvents()`.
 - Events are inserted into the **`rainHourly`** table in the results database.
 
-##### 3. 🏆 Daily Top 10 Events
+##### 3. Daily Top 10 Events
 
 - Coarsens full precipitation data to **daily totals**.
 - Compares with existing `top10precipitation.nc` file (if present).
