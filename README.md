@@ -65,12 +65,12 @@ The code is designed to be **extensible**, using a **factory pattern** to manage
     1. Download
     2. Installing dependencies and setting up a virtual environment with poetry
 5. Examples
-    1. Retrieving data
-    2. Top 10 query
-    3. Threshold processing query
+    1. Top 10 query
+    2. Threshold processing query
 6. How the tool works
     1. Downloading
     2. Processing
+    3. Querying
 7. Acknowledgements
 
 ## Requirements
@@ -138,13 +138,14 @@ Run any script:
 poetry run python path/to/script.py
 ```
 
-To run the example notebooks
+To run the querying and visualisation tool:
 
 ```bash
 streamlit run .\streamlitVisualization\extreme-weather-db.py
 ```
 
 ## Examples
+
 
 
 
@@ -240,25 +241,25 @@ This function handles **threshold-based** and **top-N precipitation event detect
   - `rainDaily`
   - `snowDaily`
 
-### 🌡️ `processTemperature(path)`
+#### `processTemperature(path)`
 
 Processes temperature data at the 1000 hPa pressure level.
 
-#### 🔧 Processing Steps:
+##### Processing Steps:
 - Selects only the first pressure level and removes redundant coordinates (`pressure_level`, `number`).
 - Computes and updates:
   - Top 10 **highest** daily temperatures (saved to `top10temperatureHigh.nc`)
   - Top 10 **lowest** daily temperatures (saved to `top10temperatureLow.nc`)
 - Existing top 10 datasets are loaded and compared using `update_top_n()` to preserve consistency across years.
 
-#### 🗃️ Output:
+##### Output:
 - Top 10 files in NetCDF format
 
-### 💨 `processWind(path)`
+#### `processWind(path)`
 
 Processes 10m wind data (u and v components) to detect high wind events.
 
-#### 🔧 Processing Steps:
+##### Processing Steps:
 - Computes the windspeed magnitude:  
   \[`windspeed = sqrt(u10² + v10²)`\]
 - Drops unnecessary fields (`u10`, `v10`, `i10fg`, `number`) for efficiency.
@@ -267,32 +268,32 @@ Processes 10m wind data (u and v components) to detect high wind events.
   - Connected windspeed events exceeding **Beaufort 9 (20.8 m/s)**
 - Events are clustered using `getConnectedEvents()` and stored in the `windspeedDaily` table.
 
-#### Output:
+##### Output:
 - `top10wind.nc` NetCDF file
 - `windspeedDaily` events stored in the result database
 
 ---
-### `processWindgust(path)`
+#### `processWindgust(path)`
 
 Processes hourly instantaneous 10m wind gust data to detect extreme gust events.
 
-#### 🔧 Processing Steps:
+##### Processing Steps:
 - Removes unused dimensions (`number`, `expver`)
 - Detects wind gust exceedances over **Beaufort 10 (24.5 m/s)**
 - Clusters and inserts connected gust events into the `windgustHourly` table
 
 > 💡 **Note**: Top 10 detection is commented out in this version and can be enabled later.
 
-#### 🗃️ Output:
+##### 🗃️ Output:
 - `windgustHourly` events stored in the results database
 
 ---
 
-### `processingManager(arguments)`
+#### `processingManager(arguments)`
 
 Main function executed per dataset (per variable and year).
 
-#### 🔧 Functionality:
+##### Functionality:
 - Splits input into `year` and `variable`
 - Fetches appropriate processor from `ProcessingFactory`
 - Updates processing status to `"processing"` in the SQLite tracking DB
@@ -302,11 +303,11 @@ Main function executed per dataset (per variable and year).
 
 ---
 
-### `main()` — Entry Point
+#### `main()` — Entry Point
 
 Handles full execution of the processing pipeline.
 
-#### Workflow:
+##### Workflow:
 1. Connects to the processing database (`processing.sql`)
 2. Initializes the DB schema if it doesn't exist
 3. Fetches all years/variables that haven’t been processed
@@ -314,15 +315,49 @@ Handles full execution of the processing pipeline.
 5. Creates the results database (`results.sql`)
 6. Processes all records in parallel using `ThreadPoolExecutor`
 
-#### Parallelism:
+##### Parallelism:
 - Controlled by `MAX_WORKERS` (currently set to 1)
 - Easily scalable for local HPC or cloud environments
 
-#### Output:
+##### Output:
 - Logs written to `processing.log`
 - All extreme event detections stored in:
   - Result NetCDF files
   - SQLite event database
+
+### Querying & Visualization
+After processing, the system enables advanced querying and interactive exploration of extreme weather events:
+
+#### Geolocation & Grid Matching
+- City names are resolved to geographic coordinates using Nominatim and Geopy.
+
+- These coordinates are mapped to the closest ERA5 grid cell to ensure consistent spatial resolution.
+
+#### Querying the Database
+- Retrieve top 10 values for any single event type (e.g. rain, wind) or all event types combined.
+
+- Retrieve all threshold-exceeding events, either globally or filtered by a specific event type.
+
+- Events spanning multiple time steps are grouped into single episodes using a clustering method based on temporal continuity.
+
+#### Streamlit-Based Visualization
+The frontend is built using Streamlit, with interactive maps rendered via Cartopy and Folium:
+
+##### City View:
+
+- Visualize all threshold-exceeding events for a selected city.
+
+- Display start and end times, with detailed stats for each time step.
+
+- Interactive maps show how the event evolves spatially over time.
+
+- See top 10 extreme values for that city.
+
+##### Global View:
+
+- Visualize global top 10 extreme events across all variables.
+
+- Explore the spatial extent and characteristics of the most intense episodes.
 
 ## Acknowledgements
 
