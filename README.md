@@ -4,7 +4,7 @@ An extreme weather database project developed during the **Advanced Earth System
 
 ---
 
-### 📌 About the Project
+## About the Project
 
 This project processes and analyzes climate data to detect **extreme weather events** that occurred between **2000 and 2023**. It utilizes datasets obtained from the **ERA5 reanalysis archive** provided by the Copernicus Climate Data Store (CDS).
 
@@ -16,11 +16,11 @@ The core variables include:
 
 ---
 
-### 🔍 How It Works
+### How It Works
 
 The dataset is analyzed and stored in a **SQLite database**, supporting two primary query types:
 
-1. **Top-N Queries**: Retrieve the top 10 highest (or lowest) values for a selected variable in a user-defined time window and region.
+1. **Top-N Queries**: Retrieve a selected variable's top 10 highest (or lowest) values in a user-defined time window and region.
 2. **Threshold-Based Queries**: Detect physical quantities that exceed thresholds defined in meteorological literature — for example:
    - Extremely high temperatures that pose risks to human life
    - Intense rainfall or snow events
@@ -28,7 +28,7 @@ The dataset is analyzed and stored in a **SQLite database**, supporting two prim
 
 ---
 
-### 📊 Statistical Aggregation
+### Statistical Aggregation
 
 - **Temperature & Precipitation**: Daily **minimum** and **maximum**
 - **Wind & Wind Gusts**: Daily **maximum**
@@ -36,7 +36,7 @@ The dataset is analyzed and stored in a **SQLite database**, supporting two prim
 
 ---
 
-### 🗺️ Spatial & Temporal Resolution
+### Spatial & Temporal Resolution
 
 - **Grid resolution**: 0.25° x 0.25° (~25 km)
 - **Temporal resolution**:
@@ -49,66 +49,104 @@ The dataset is analyzed and stored in a **SQLite database**, supporting two prim
 
 To use the download functionality:
 - Create a **CDS account** and agree to the license terms
-- Set up your `.cdsapirc` file with your CDS API key as per the [CDS API instructions](https://cds.climate.copernicus.eu/api-how-to)
+- Set up your `.cdsapirc` file with your CDS API key as per the [CDS API instructions](https://cds.climate.copernicus.eu/how-to-api)
 - Define your dataset selections and variable requests in the script
 
 The code is designed to be **extensible**, using a **factory pattern** to manage different variables, and includes functionality for **automated download tracking**, **sanity checking**, and **result storage**.
 
 ---
 
-#  Table of contents
+##  Table of Contents
 
-1. about
+1. About
 2. Table of contents
 3. Requirements
-4.. Installation 
-    1.download
-    2.Installing dependencies and setting up virtual environment with poetry
+4. Installation 
+    1. Download
+    2. Installing dependencies and setting up a virtual environment with poetry
 5. Examples
     1. Retrieving data
     2. Top 10 query
     3. Threshold processing query
-    4. 
 6. How the tool works
-    1. downloading
-    4. Processing
-
+    1. Downloading
+    2. Processing
 7. Acknowledgements
-8. Documentation of source code
-9. Citation
+8. Citation
 
-# requirements
+## Requirements
 
-This project requires python 3.11 or higher. For more information see pyproject.toml
-The package relies on netCDF and X arrays for saving data, and if they are required as dependencies in the installation
+This project requires **Python 3.11 or higher**.  
+For more details, refer to the `pyproject.toml` file.
 
- Thread pool executor is used for parallel processing on a single node and a slum script is used for running the scripts on the hpc called Ramses.
+### Dependencies
 
-The examples in this package rely on 
+- [xarray](https://docs.xarray.dev/) and [netCDF4](https://unidata.github.io/netcdf4-python/) for handling climate data
+- `ThreadPoolExecutor` for parallel processing on a single node
+- **SLURM** job scripts for execution on the **RAMSES HPC cluster**
+- [Streamlit](https://streamlit.io/) for interactive visualization examples
 
-#  Installation
+---
 
- In the folder that you want to download this project to clone the project from its get repository
+## Installation
 
-Git clone https://github.com/annweitz/extreme-weather-db
+In the folder where you'd like to download this project, run:
 
- The dependency management in this project is done by poetry so we need to instal that first using the command pip instal poetry
+```bash
+git clone https://github.com/annweitz/extreme-weather-db
+cd extreme-weather-db
 
- Poetry then instals the dependencies and creates a virtual environment using poetry init  And poetry instal 
+### Step 1: Install Poetry
 
- To deactivate the environment we need to run
+If you don’t already have Poetry, install it via:
 
- To run the example notebooks
+```bash
+pip install poetry
 
- To run the scripts we need to call poetry run python path to script
+### Step 2: Install Dependencies
 
-# Examples 
+Inside the project folder:
 
-#  How the tool works
+```bash
+poetry install
 
-##  downloading
+This will:
+ - Install all required packages
+ - Automatically create a virtual environment
 
-### ERA5 Climate Data Downloader (`downloader.py`)
+### Step 3: Activate / Deactivate the Environment
+
+To activate the Poetry environment:
+
+```bash
+poetry shell
+
+To deactivate:
+
+```bash
+exit
+
+### Running the Project
+
+Run any script:
+
+```bash
+poetry run python path/to/script.py
+
+To run the example notebooks
+
+```bash
+streamlit run .\streamlitVisualization\extreme-weather-db.py
+
+## Examples
+
+
+
+##  How the Tool Works
+
+###  Downloading
+
+ERA5 Climate Data Downloader (`downloader.py`):
 
 This module automates the downloading, sanity checking, and merging of ERA5 climate data from the [Copernicus Climate Data Store (CDS)](https://cds.climate.copernicus.eu/). It supports wind gusts, wind vectors, temperature at 1000 hPa, and total precipitation over the period from 2000 to 2023.
 
@@ -139,13 +177,10 @@ To run:
 poetry run python downloader.py
 
 Ensure that you have:
+- Your .cdsapirc credentials are set up in your home directory
+- Access to the appropriate storage folders (scratch and projects)
 
-Your .cdsapirc credentials set up in your home directory
-
-Access to the appropriate storage folders (scratch and projects)
-
-## processing
-
+### Processing
 
 This script processes the downloaded NetCDF data to extract **extreme weather events**, update the **top 10 events**, and insert detected events into a SQLite **results database**.
 
@@ -160,7 +195,7 @@ This script processes the downloaded NetCDF data to extract **extreme weather ev
 - `processing.sql` and `results.sql`: databases for tracking status and storing events
 - `MAX_WORKERS`: thread pool size (currently 1)
 
-#### 🏭 ProcessingFactory
+#### ProcessingFactory
 A modular design using the **Factory Pattern** to register and call the appropriate processing logic for each variable:
 ```python
 ProcessingFactory.registerProcessor("precipitation", lambda path: processPrecipitation(path))
@@ -224,12 +259,12 @@ Processes 10m wind data (u and v components) to detect high wind events.
   - Connected windspeed events exceeding **Beaufort 9 (20.8 m/s)**
 - Events are clustered using `getConnectedEvents()` and stored in the `windspeedDaily` table.
 
-#### 🗃️ Output:
+#### Output:
 - `top10wind.nc` NetCDF file
 - `windspeedDaily` events stored in the result database
 
 ---
-### 🌬️ `processWindgust(path)`
+### `processWindgust(path)`
 
 Processes hourly instantaneous 10m wind gust data to detect extreme gust events.
 
@@ -245,7 +280,7 @@ Processes hourly instantaneous 10m wind gust data to detect extreme gust events.
 
 ---
 
-### 🧠 `processingManager(arguments)`
+### `processingManager(arguments)`
 
 Main function executed per dataset (per variable and year).
 
@@ -259,11 +294,11 @@ Main function executed per dataset (per variable and year).
 
 ---
 
-### 🔁 `main()` — Entry Point
+### `main()` — Entry Point
 
 Handles full execution of the processing pipeline.
 
-#### 🔧 Workflow:
+#### Workflow:
 1. Connects to the processing database (`processing.sql`)
 2. Initializes the DB schema if it doesn't exist
 3. Fetches all years/variables that haven’t been processed
@@ -271,11 +306,11 @@ Handles full execution of the processing pipeline.
 5. Creates the results database (`results.sql`)
 6. Processes all records in parallel using `ThreadPoolExecutor`
 
-#### 🧩 Parallelism:
+#### Parallelism:
 - Controlled by `MAX_WORKERS` (currently set to 1)
 - Easily scalable for local HPC or cloud environments
 
-#### 🗃️ Output:
+#### Output:
 - Logs written to `processing.log`
 - All extreme event detections stored in:
   - Result NetCDF files
