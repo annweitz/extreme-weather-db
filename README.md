@@ -72,7 +72,6 @@ The code is designed to be **extensible**, using a **factory pattern** to manage
     1. Downloading
     2. Processing
 7. Acknowledgements
-8. Citation
 
 ## Requirements
 
@@ -95,6 +94,7 @@ In the folder where you'd like to download this project, run:
 ```bash
 git clone https://github.com/annweitz/extreme-weather-db
 cd extreme-weather-db
+```
 
 ### Step 1: Install Poetry
 
@@ -102,6 +102,7 @@ If you don’t already have Poetry, install it via:
 
 ```bash
 pip install poetry
+```
 
 ### Step 2: Install Dependencies
 
@@ -109,6 +110,7 @@ Inside the project folder:
 
 ```bash
 poetry install
+```
 
 This will:
  - Install all required packages
@@ -120,11 +122,13 @@ To activate the Poetry environment:
 
 ```bash
 poetry shell
+```
 
 To deactivate:
 
 ```bash
 exit
+```
 
 ### Running the Project
 
@@ -132,11 +136,13 @@ Run any script:
 
 ```bash
 poetry run python path/to/script.py
+```
 
 To run the example notebooks
 
 ```bash
 streamlit run .\streamlitVisualization\extreme-weather-db.py
+```
 
 ## Examples
 
@@ -175,6 +181,7 @@ To run:
 
 ```bash
 poetry run python downloader.py
+```
 
 Ensure that you have:
 - Your .cdsapirc credentials are set up in your home directory
@@ -199,6 +206,7 @@ This script processes the downloaded NetCDF data to extract **extreme weather ev
 A modular design using the **Factory Pattern** to register and call the appropriate processing logic for each variable:
 ```python
 ProcessingFactory.registerProcessor("precipitation", lambda path: processPrecipitation(path))
+```
 
 #### `processPrecipitation(path)`
 
@@ -316,5 +324,11 @@ Handles full execution of the processing pipeline.
   - Result NetCDF files
   - SQLite event database
 
+## Acknowledgements
 
+This project was developed as part of the Advanced Earth System Data Processing (ESDP2) course at the University of Cologne under the guidance of Prof. Dr. Martin Schultz. His input and expertise in atmospheric data analysis played a central role in shaping the project.
+
+We also gratefully acknowledge the use of the RAMSES High-Performance Computing (HPC) cluster at the University of Cologne for data processing and computation.
+
+Climate data used in this project was retrieved from the Copernicus Climate Data Store, particularly the ERA5 reanalysis dataset.
 
