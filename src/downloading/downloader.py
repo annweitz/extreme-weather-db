@@ -1,17 +1,21 @@
-import calendar
-import glob
-import os.path
+import logging
+import sys
 import subprocess
-import time
 import traceback
-import zipfile
-import shutil
+from random import random
 import cdsapi
 import sqlite3
-import random
-import xarray
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from src.utils.utilityFunctions import packDownloadRecords
 
+project_root = Path(__file__).parent.parent.parent
+sys.path.append(str(project_root))
+from src.config import DOWNLOAD_FOLDER, DOWNLOAD_DATABASE, MAX_WORKERS_DOWNLOAD, PROCESSING_FOLDER, MAX_TRIES_DOWNLOADING
+from downloadDatabaseFunctions import initializeDatabase, updateStatus, incrementTries, getStatus
+from downloadingFactory import DownloadingFactory
+
+FAKE_DOWNLOADS = False
 
 # TODO: implement logging
 # TODO. implement error handling
@@ -52,6 +56,7 @@ The temperature file contains the field:
 1. temperature at 1000hPa
 The precipitation file contains the field:
 1. total precipitation
+2. precipitation type
 
 The libraries used in this script are:
 1. calendar - to check if the year is a leap year
@@ -70,429 +75,135 @@ The libraries used in this script are:
 
 """
 
-
-# file paths to temp and project folders
-scratch_folder = "/scratch/ag-schultz/esdp2/"
-project_folder = "/projects/ag-schultz/"
-# file size limits
-WIND_FILESIZE_MIN = 220000000
-WIND_FILESIZE_MAX = 320000000
-TEMPERATURE_FILESIZE_MIN = 50000000
-TEMPERATURE_FILESIZE_MAX = 90000000
-PRECIPITATION_FILESIZE_MIN = 700000000
-PRECIPITATION_FILESIZE_MAX = 900000000
-WINDGUST_FILESIZE_MIN = 1000000000 # in GB (1GB)
-WINDGUST_FILESIZE_MAX = 1600000000  # in GB (1.6GB)
-# maximum number of tries for each download
-MAX_TRIES = 15
-
-
-def getDate(year, month):
-    leapYear = calendar.isleap(year)
-    month = int(month)
-    if month in(1,3,5,7,8,10,12):
-        day = 31
-    elif month in (4,6,9,11):
-        day = 30
-    elif month == 2:
-        if leapYear:
-            day = 29
-        else:
-            day = 28
-    if month < 10:
-        month = f"0{month}"
-    return f"{year}-{month}-01/to/{year}-{month}-{day}"
-
-def initializeDatabase(connection, yearrange = [2000,2023], variables = ["temperature", "precipitation", "wind", "windgust"]):
-    cursor = connection.cursor()
-
-    # create table
-    cursor.execute(
-        "CREATE TABLE downloads(id INTEGER PRIMARY KEY, year INTEGER, month INTEGER, variable TEXT, status TEXT, tries INTEGER)")
-
-    # fill table
-    for year in range(yearrange[0], yearrange[1] + 1):
-        for month in range(1, 13):
-            for var in variables:
-                cursor.execute(f"""
-                INSERT INTO downloads (id, year, month, variable, status, tries) VALUES
-                (NULL, {year},{month}, '{var}' ,'unknown', 0)
-                """)
-
-    # commit results
-    connection.commit()
-    return
-
-def updateStatus(year,month,var,status,cursor):
-    cursor.execute(f"UPDATE downloads SET status = '{status}' WHERE year={year} AND month = {month} AND variable = '{var}'")
-    con = cursor.connection
-    con.commit()
-
-def incrementTries(year, month, var, cursor):
-    cursor.execute(f"UPDATE downloads SET tries = tries + 1  WHERE year={year} AND month = {month} AND variable = '{var}'")
-    con = cursor.connection
-    con.commit()
-
-def getTriesByID(id, cursor):
-    result = cursor.execute(f"select tries from downloads where id = {id}")
-    tries = result.fetchone()[0]
-    return tries
-
-def getTries(year,month,var,cursor):
-    result = cursor.execute(f"select tries from downloads where year = {year} and month = {month} and variable = '{var}'")
-    tries = result.fetchone()[0]
-    return tries
-
-def getStatusByID(id, cursor):
-    result = cursor.execute(f"select status from downloads where id = {id}")
-    tries = result.fetchone()[0]
-    return tries
-
-def getStatus(year,month,var,cursor):
-    result = cursor.execute(f"select status from downloads where year = {year} and month = {month} and variable = '{var}'")
-    status = result.fetchone()[0]
-    return status
-
 def download(year,month,var):
-    # build cdsapi request and unpack arguments
-    try:
-        dataset, request, file = requestBuilder(year, month, var)
 
-        # client for downloading
-        client = cdsapi.Client()
-        # start download
-        print(f"Starting download for {year}-{month}-{var}")
+    logging.info(f"Starting download for {year}-{month}-{var}")
+
+    client = cdsapi.Client()
+
+    try:
+        # Get request builder and sanity check function for this variable
+        requestBuilder = DownloadingFactory.getRequestBuilder(var)
+        sanityChecker = DownloadingFactory.getSanityChecker(var)
+
+        dataset, request, file = requestBuilder(year, month)
         client.retrieve(dataset, request, file)
+
+        # sanity check
+        file_status = sanityChecker(file)
+
+    except ValueError as e:
+        logging.error("Invalid download type: %s - Error: %s", var, str(e))
     except Exception as e:
-        print(traceback.format_exc())
-    # sanity check
-    file_status = sanityCheck(file, var)
+        logging.exception("Unexpected error while downloading %s: %s-%s - %s", var, year, month, str(e))
+
     return file_status
 
-class RequestBuilderBase:
-    def __init__(self, grid=[0.25,0.25], year_range=[2000,2023]):
-        self.grid = grid
-        self.year_range = year_range
-
-    def build_request(self, year, month):
-        raise NotImplementedError
-    
-class TemperatureRequestBuilder(RequestBuilderBase):
-    def build_request(self, year, month):
-        date = getDate(year, month)
-        date = date.replace("to/", "")
-        dataset = "derived-era5-pressure-levels-daily-statistics"
-        request = {
-            "product_type": "reanalysis",
-            "variable": ["temperature"],
-            "date": date,
-            "pressure_level": ["1000"],
-            "daily_statistic": "daily_mean",
-            "time_zone": "utc+00:00",
-            "frequency": "1_hourly",
-            "grid": self.grid,
-            "format": "netcdf"}
-        file = f"{scratch_folder}temperature_{year}_{month}.nc"
-        return (dataset, request, file)
-    
-class WindRequestBuilder(RequestBuilderBase):
-    def build_request(self, year, month):
-        date = getDate(year, month)
-        date = date.replace("to/", "")
-
-        dataset = "derived-era5-single-levels-daily-statistics"
-        request = {
-        "product_type": "reanalysis",
-        "variable": [
-            "10m_u_component_of_wind",
-            "10m_v_component_of_wind",
-            "instantaneous_10m_wind_gust"
-        ],
-        "date": date,
-        "daily_statistic": "daily_maximum",
-        "time_zone": "utc+00:00",
-        "frequency": "1_hourly",
-        "grid": self.grid
-        # need to download zip for now. cannot open the downloaded .nc file with xarray
-        #,"format": "netcdf"
-        }
-        file = f"{scratch_folder}wind_{year}_{month}.zip"
-        return (dataset,request,file)
-    
-class PrecipitationRequestBuilder(RequestBuilderBase):
-    def build_request(self, year, month):
-        date = getDate(year, month)
-        dataset = "reanalysis-era5-complete"
-        request = {
-        "class": "ea",
-        "date": date,
-        "expver": "1",
-        "levtype": "sfc",
-        "param": "228.128/260015",
-        "step": "6/7/8/9/10/11/12/13/14/15/16/17",
-        "stream": "oper",
-        "time": "06:00:00/18:00:00",
-        "type": "fc",
-        "grid": self.grid,
-        "format": "netcdf"}
-        file = f"{scratch_folder}precipitation_{year}_{month}.nc"
-        return (dataset,request,file)
-    
-class WindGustRequestBuilder(RequestBuilderBase):
-    def build_request(self, year, month):
-        date = getDate(year, month)
-        date = date.replace("to/", "")
-        dataset = "reanalysis-era5-single-levels"
-        request = {
-            "product_type": ["reanalysis"],
-            "date": date,
-            "time": [
-                "00:00", "01:00", "02:00",
-                "03:00", "04:00", "05:00",
-                "06:00", "07:00", "08:00",
-                "09:00", "10:00", "11:00",
-                "12:00", "13:00", "14:00",
-                "15:00", "16:00", "17:00",
-                "18:00", "19:00", "20:00",
-                "21:00", "22:00", "23:00"
-            ],
-            "grid": self.grid,
-            "data_format": "netcdf",
-            "download_format": "unarchived",
-            "variable": ["instantaneous_10m_wind_gust"]
-        }
-        file = f"{scratch_folder}windgust_{year}_{month}.nc"
-        return (dataset,request,file)
-
-class RequestBuilderFactory:
-    def __init__(self, grid=[0.25,0.25], year_range=[2000,2023]):
-        self.grid = grid
-        self.year_range = year_range
-
-    def get_request_builder(self, var):
-        if (var == "temperature"):
-            return TemperatureRequestBuilder(self.grid, self.year_range)
-        elif (var == "wind"):
-            return WindRequestBuilder(self.grid, self.year_range)
-        elif (var == "precipitation"):
-            return PrecipitationRequestBuilder(self.grid, self.year_range)
-        elif (var == "windgust"):
-            return WindGustRequestBuilder(self.grid, self.year_range)
-        else:
-            raise ValueError("Unknown variable: " + var)
-
-def requestBuilder(year, month, var):
-    factory = RequestBuilderFactory(grid=[0.25,0.25], year_range=[2000,2023])
-    builder = factory.get_request_builder(var)
-    return builder.build_request(year, month)
 
 def fakeDownload(year,month,var):
-    filepath = f"{scratch_folder}{var}_{year}_{month}.nc"
-
-    if(var == "wind"):
-        filepath = filepath.replace(".nc",".zip")
-    file_status = sanityCheck(filepath, var)
-
-    return file_status
-
-class SanityCheckBase:
-    def check(self,file_path):
-        raise NotImplementedError('Implement method for sanity check of variable')
-    
-class TemperatureSanityCheck(SanityCheckBase):
-    def check(self,file_path):
-        size = os.path.getsize(file_path)
-        if (size >= TEMPERATURE_FILESIZE_MIN and size <= TEMPERATURE_FILESIZE_MAX):
-            pass
-        else:
-            return "failed"
-
-        TEMP_MIN = 180 # -90°C
-        TEMP_MAX = 340 #  67°C
-        dataset = xarray.open_dataset(file_path)
-        if (getMinNC(dataset,"t") >= TEMP_MIN and getMaxNC(dataset,"t") <= TEMP_MAX):
-            status = "downloaded"
-        else:
-            status = "failed"
-        dataset.close()
-        return status
-    
-class WindSanityCheck(SanityCheckBase):
-    def check(self,file_path):
-        size = os.path.getsize(file_path)
-        if (size >= WIND_FILESIZE_MIN and size <= WIND_FILESIZE_MAX):
-            pass
-        else:
-            return "failed"
-        tempname = f"temp_{file_path.replace(scratch_folder,'').replace('.zip','')}"
-        with zipfile.ZipFile(file_path) as zipref:
-            zipref.extractall(f"{scratch_folder}{tempname}/")
-        files = glob.glob(scratch_folder + tempname + "/*.nc")
-        merged_dataset = xarray.open_mfdataset(files)
-
-        WIND_MIN = -150
-        WIND_MAX = 150
-
-        if (getMinNC(merged_dataset,"i10fg") >= WIND_MIN and getMaxNC(merged_dataset,"i10fg") <= WIND_MAX):
-            pass
-        else:
-            status = "failed"
-
-        if (getMinNC(merged_dataset,"v10") >= WIND_MIN and getMaxNC(merged_dataset,"v10") <= WIND_MAX):
-            pass
-        else:
-            status = "failed"
-
-        if (getMinNC(merged_dataset,"u10") >= WIND_MIN and getMaxNC(merged_dataset,"u10") <= WIND_MAX):
-            status = "downloaded"
-        else:
-            status = "failed"
-        merged_dataset.to_netcdf(file_path.replace(".zip",".nc"))
-        merged_dataset.close()
-        try:
-            temp_path = f"{scratch_folder}/{tempname}/"
-            shutil.rmtree(temp_path, ignore_errors=False)
-            os.remove(file_path)
-        except:
-            print(traceback.format_exc())
-        return status
-    
-class PrecipitationSanityCheck(SanityCheckBase):
-    def check(self,file_path):
-        size = os.path.getsize(file_path)
-        if (size >= PRECIPITATION_FILESIZE_MIN and size <= PRECIPITATION_FILESIZE_MAX):
-            pass
-        else:
-            return "failed"
-
-        PRECIP_MIN = 0      #
-        PRECIP_MAX = 0.45    # 450mm / 1000 to convert to m
-        dataset = xarray.open_dataset(file_path)
-        if (getMinNC(dataset,"tp") >= PRECIP_MIN and getMaxNC(dataset,"tp") <= PRECIP_MAX):
-            status = "downloaded"
-        else:
-            status =  "failed"
-        dataset.close()
-        return status
-
-class WindGustSanityCheck(SanityCheckBase):
-    def check(self,file_path):
-        size = os.path.getsize(file_path)
-        if (size >= WINDGUST_FILESIZE_MIN and size <= WINDGUST_FILESIZE_MAX):
-            pass
-        else:
-            return "failed"
-        WIND_MIN = 0
-        WIND_MAX = 150
-        dataset = xarray.open_dataset(file_path)
-        if (getMinNC(dataset,"i10fg") >= WIND_MIN and getMaxNC(dataset,"i10fg") <= WIND_MAX):
-            status = "downloaded"
-        else:
-            status = "failed"
-        dataset.close()
-        return status    
-    
-class SanityCheckFactory:
-    def get_sanity_check(self, var):
-        if (var == "temperature"):
-            return TemperatureSanityCheck()
-        elif (var == "wind"):
-            return WindSanityCheck()
-        elif (var == "precipitation"):
-            return PrecipitationSanityCheck()
-        elif (var == "windgust"):
-            return WindGustSanityCheck()
-        else:
-            raise ValueError("Unsupported variable for sanity check: " + var)
+    if random.randrange(100) > 1:
+        return "downloaded"
+    else:
+        return "failed"
 
 
-def sanityCheck(file_path, var):
-    sanity_check_factory = SanityCheckFactory()
-    sanity_check = sanity_check_factory.get_sanity_check(var)
-    return sanity_check.check(file_path)
-
-def getMinNC(dataset, variable):
-    min = dataset[variable].min().to_numpy()
-    return min
-
-def getMaxNC(dataset, variable):
-    max = dataset[variable].max().to_numpy()
-    return max
-
-def download_manager(args, database = "/projects/ag-schultz/download_database.db"):
+def download_manager(args, database = DOWNLOAD_DATABASE):
     vals = args.split(":")
     # unpack arguments
     year = int(vals[0])
     month = int(vals[1])
     var = vals[2]
 
-    print(f"Currently processing {year}:{month}:{var}")
+    logging.info(f"Currently downloading {year}:{month}:{var}")
 
     connection = sqlite3.connect(database)
     cursor = connection.cursor()
-    # check if month to download was already downloaded (should not be the case)
-    status = getStatus(year,month,var,cursor)
-    if(status == "downloaded"):
-        print(f"{year}:{month}:{var} skipped, because it was already downloaded")
-        return
+
+    # Set status to downloading and increment tries, in case something happens while downloading
     updateStatus(year,month,var,"downloading", cursor)
     incrementTries(year,month,var,cursor)
-    downloadStatus = download(year,month,var)
-    print(f"{year}:{month}:{var} - download status: {downloadStatus}")
-    updateStatus(year,month,var,downloadStatus,cursor)
 
-    #check if we can merge this year
+    # Execute download and update status in database
+    if(FAKE_DOWNLOADS):
+        downloadStatus = fakeDownload(year, month, var)
+    else:
+        downloadStatus = download(year,month,var)
+    updateStatus(year,month,var,downloadStatus,cursor)
+    logging.info(f"Download finished for {year}:{month}:{var} - download status: {downloadStatus}")
+
+    # Check if we can merge this year
     try:
 
         if(downloadStatus != "downloaded"):
-            # don't need to check if this download wasn't successful
+            # If the download was not successful, we don't want to merge
             pass
         else:
-            yearsFinished = cursor.execute(f"select count(*) from downloads where year = {year} and variable = '{var}'"
+            # Get the amount of months that have been successfully downloaded for the current year and variable
+            monthsFinished = cursor.execute(f"select count(*) from downloads where year = {year} and variable = '{var}'"
                                            f"and status = 'downloaded'").fetchone()[0]
-            print(f"years finished: {yearsFinished}")
-            if(yearsFinished == 12):
-                # call merge script with year and var
+            if(monthsFinished == 12):
+                # Call merge script with year and var
                 arg1 = year
                 arg2 = var
-                print("running merge script")
+                logging.info(f"Running merge script for {var} year {year}")
                 subprocess.run(["python", "merge_script.py", str(arg1), arg2])
-            else:
-                pass
-    except:
-        print(traceback.format_exc())
+    except Exception as e:
+        logging.error(traceback.format_exc())
     connection.close()
-    return status
 
-def pack_records(records):
-    arguments = []
-    for row in records:
-        retVal = f"{row[0]}:{row[1]}:{row[2]}"
-        arguments.append(retVal)
-    return arguments
 
-def main():
+def main(loop = False, fakeDownload = False):
+    # Initialize logging
+    logging.basicConfig(
+        filename=f"{PROCESSING_FOLDER}downloading.log",  # Save logs to a file
+        level=logging.INFO,  # Log levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+        format="%(asctime)s - %(levelname)s - %(message)s",  # Log format
+    )
+
+    logging.info("Starting main download script")
+    if(loop):
+        logging.info("Looping enabled. Looping until everything is done or failed too often.")
+    if(fakeDownload):
+        FAKE_DOWNLOADS = fakeDownload
+        logging.info("Fake downloads enabled.")
+    logging.info(f"Download folder: {DOWNLOAD_FOLDER}")
+    logging.info(f"Download database: {DOWNLOAD_DATABASE}")
 
     # establish sql connection to database
-    connection = sqlite3.connect("download_database.db")
+    connection = sqlite3.connect(DOWNLOAD_DATABASE)
     cursor = connection.cursor()
 
     # check if downloads table exists, if it doesn't, create it
-    exists = cursor.execute("Select exists(select 1 from sqlite_master where type = 'table' and name = 'downloads')").fetchone()[0]
+    exists = cursor.execute("SELECT exists(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'downloads')").fetchone()[0]
     if exists == 0:
         initializeDatabase(connection,yearrange=[2000,2023])
 
-    # get everything that has either not been done yet or failed
-    res = cursor.execute(f"select year,month,variable from downloads where not status = 'downloaded' and tries < {MAX_TRIES} order by year desc")
-    records = res.fetchall()
+    #
+    while(True):
+        # Get every record from the download database, where the status is not 'downloaded' and maximum number of tries has not been exceeded yet.
+        res = cursor.execute(f"SELECT year,month,variable FROM downloads WHERE NOT status = 'downloaded' AND tries < {MAX_TRIES_DOWNLOADING} ORDER BY year DESC")
+        records = res.fetchall()
 
-    arguments = pack_records(records)
+        if(len(records) == 0):
+            logging.info(f"No downloads that have either not been finished or not exceeded that maximum tries {MAX_TRIES_DOWNLOADING} remain. Stopping program.")
+            break
+        else:
+            logging.info(f"{len(records)} downloads remaining. Starting now with {MAX_WORKERS_DOWNLOAD} workers.")
+        arguments = packDownloadRecords(records)
 
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        executor.map(download_manager, arguments)
-    #for result in results:
-    #    print(result)
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS_DOWNLOAD) as executor:
+            executor.map(download_manager, arguments)
+        if(not loop):
+            break
+
 
 if __name__ == "__main__":
-    main()
+    loop = False
+    fake = False
+    try:
+        loop = sys.argv[1]
+        fake = sys.argv[2]
+    except:
+        pass
+    main(loop = loop, fakeDownload=fake)
